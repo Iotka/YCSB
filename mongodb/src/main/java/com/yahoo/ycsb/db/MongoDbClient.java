@@ -16,6 +16,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.Boolean;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBAddress;
@@ -58,6 +59,9 @@ public class MongoDbClient extends DB {
     /** Count the number of times initialized to teardown on the last {@link #cleanup()}. */
     private static final AtomicInteger initCount = new AtomicInteger(0);
 
+	/** debug flag */
+	private boolean _debug = false;
+
     /**
      * Initialize any state for this DB.
      * Called once per DB instance; there is one DB instance per client thread.
@@ -72,6 +76,7 @@ public class MongoDbClient extends DB {
 
             // initialize MongoDb driver
             Properties props = getProperties();
+			this._debug = Boolean.parseBoolean(props.getProperty("debug","false"));
             String url = props.getProperty("mongodb.url",
                     "mongodb://localhost:27017");
             database = props.getProperty("mongodb.database", "ycsb");
@@ -166,7 +171,11 @@ public class MongoDbClient extends DB {
             DBCollection collection = db.getCollection(table);
             DBObject q = new BasicDBObject().append("_id", key);
             WriteResult res = collection.remove(q, writeConcern);
-            return res.getN() == 1 ? 0 : 1;
+       		if (_debug){
+        		System.out.println("Delete key: " + key);
+				System.out.println("writeConcern=" + writeConcern);
+			} 
+			return res.getN() == 1 ? 0 : 1;
         }
         catch (Exception e) {
             System.err.println(e.toString());
@@ -199,11 +208,17 @@ public class MongoDbClient extends DB {
 
             DBCollection collection = db.getCollection(table);
             DBObject r = new BasicDBObject().append("_id", key);
-            for (String k : values.keySet()) {
+            if (_debug) {
+				System.out.println("Inserting key: " +key);
+			}
+			for (String k : values.keySet()) {
                 r.put(k, values.get(k).toArray());
             }
             WriteResult res = collection.insert(r, writeConcern);
-            return res.getError() == null ? 0 : 1;
+			if (_debug) {
+				System.out.println("WriteConcern=" + writeConcern);
+	 		}
+	  		return res.getError() == null ? 0 : 1;
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -237,14 +252,21 @@ public class MongoDbClient extends DB {
 
             DBCollection collection = db.getCollection(table);
             DBObject q = new BasicDBObject().append("_id", key);
-            DBObject fieldsToReturn = new BasicDBObject();
+            if(_debug) {
+				System.out.println("Reading key: " + key);
+			}
+			DBObject fieldsToReturn = new BasicDBObject();
 
             DBObject queryResult = null;
             if (fields != null) {
                 Iterator<String> iter = fields.iterator();
                 while (iter.hasNext()) {
-                    fieldsToReturn.put(iter.next(), INCLUDE);
-                }
+                    String item = iter.next();
+					fieldsToReturn.put(item, INCLUDE);
+                	if (_debug) {
+						System.out.println("(" + item + "=" + INCLUDE + ")");
+					}
+				}
                 queryResult = collection.findOne(q, fieldsToReturn);
             }
             else {
@@ -288,7 +310,10 @@ public class MongoDbClient extends DB {
             DBCollection collection = db.getCollection(table);
             DBObject q = new BasicDBObject().append("_id", key);
             DBObject u = new BasicDBObject();
-            DBObject fieldsToSet = new BasicDBObject();
+            if (_debug) {
+				System.out.println("Updating key: " + key);
+			}
+			DBObject fieldsToSet = new BasicDBObject();
             Iterator<String> keys = values.keySet().iterator();
             while (keys.hasNext()) {
                 String tmpKey = keys.next();
@@ -298,7 +323,10 @@ public class MongoDbClient extends DB {
             u.put("$set", fieldsToSet);
             WriteResult res = collection.update(q, u, false, false,
                     writeConcern);
-            return res.getN() == 1 ? 0 : 1;
+            if (_debug){
+				System.out.println("WriteConcern=" + writeConcern);
+			}
+			return res.getN() == 1 ? 0 : 1;
         }
         catch (Exception e) {
             System.err.println(e.toString());
@@ -331,7 +359,10 @@ public class MongoDbClient extends DB {
             DBCollection collection = db.getCollection(table);
             // { "_id":{"$gte":startKey, "$lte":{"appId":key+"\uFFFF"}} }
             DBObject scanRange = new BasicDBObject().append("$gte", startkey);
-            DBObject q = new BasicDBObject().append("_id", scanRange);
+            if (_debug){
+				System.out.println("Scannung startkey: " + startkey);
+			}
+			DBObject q = new BasicDBObject().append("_id", scanRange);
             DBCursor cursor = collection.find(q).limit(recordcount);
             while (cursor.hasNext()) {
                 // toMap() returns a Map, but result.add() expects a
@@ -339,7 +370,10 @@ public class MongoDbClient extends DB {
                 HashMap<String, ByteIterator> resultMap = new HashMap<String, ByteIterator>();
 
                 DBObject obj = cursor.next();
-                fillMap(resultMap, obj);
+                if (_debug) {
+					System.out.println("(" + obj + ")");
+				}
+				fillMap(resultMap, obj);
 
                 result.add(resultMap);
             }
